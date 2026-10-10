@@ -7,7 +7,7 @@
  * Put it in youtube-publisher/scripts/ (it reuses that skill's login). Remembers answered threads in --state
  * and logs every action to --log (defaults: <workspace>/pipeline/replied.json and replies-log.txt).
  */
-import { google } from "googleapis";
+import { google, youtube_v3 } from "googleapis";
 import * as fs from "fs";
 import * as path from "path";
 import { authenticate } from "./authenticate";
@@ -47,18 +47,18 @@ async function main() {
 
   let pageToken: string | undefined, scanned = 0, replied = 0;
   do {
-    const res = await yt.commentThreads.list({
+    const res: { data: youtube_v3.Schema$CommentThreadListResponse } = await yt.commentThreads.list({
       part: ["snippet", "replies"], allThreadsRelatedToChannelId: me, maxResults: 100,
       order: "time", textFormat: "plainText", pageToken,
     });
-    for (const t of res.data.items || []) {
+    for (const t of (res.data.items || []) as youtube_v3.Schema$CommentThread[]) {
       scanned++;
-      const top = t.snippet?.topLevelComment?.snippet;
+      const top: youtube_v3.Schema$CommentSnippet | undefined = t.snippet?.topLevelComment?.snippet;
       const id = t.id!;
       if (!top || done.has(id)) continue;
       if (top.authorChannelId?.value === me) continue;              // our own comments
       if (!KEYWORD.test(top.textOriginal || top.textDisplay || "")) continue;
-      const ours = (t.replies?.comments || []).some((c) => c.snippet?.authorChannelId?.value === me);
+      const ours = (t.replies?.comments || []).some((c: youtube_v3.Schema$Comment) => c.snippet?.authorChannelId?.value === me);
       if (ours) { done.add(id); continue; }                          // already answered by hand
       if (replied >= MAX) continue;
       const text = TEMPLATES[(done.size + replied) % TEMPLATES.length].replace("{link}", LINK);
